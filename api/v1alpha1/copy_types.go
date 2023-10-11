@@ -25,13 +25,15 @@ import (
 
 // CopySpec defines the desired state of Copy
 type CopySpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
 	SourceNamespace string `json:"sourceNamespace,omitempty"`
+
+	UseLabels bool `json:"useLabels"`
 
 	TargetLabels []string `json:"targetLabels,omitempty"`
 }
+
+// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+// Important: Run "make" to regenerate code after modifying this file
 
 // CopyStatus defines the observed state of Copy
 type CopyStatus struct {

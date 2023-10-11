@@ -87,7 +87,8 @@ func (r *CopyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			for _, copy := range copies.Items {
 				log.Info("Checking if resource should be copied",
 					"name", object.GetName(), "namespace", object.GetNamespace())
-				if object.GetNamespace() == copy.Spec.SourceNamespace && hasLabel(object.GetLabels(), copy.Spec.TargetLabels) {
+				if object.GetNamespace() == copy.Spec.SourceNamespace &&
+					(!copy.Spec.UseLabels || hasLabel(object.GetLabels(), copy.Spec.TargetLabels)) {
 					r.reconcileDeployment(ctx, log, &copy) // TODO: Return the error?
 				}
 			}
