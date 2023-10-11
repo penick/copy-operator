@@ -65,8 +65,6 @@ func (r *CopyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&source.Kind{Type: &v1apps.Deployment{}}, handler.EnqueueRequestsFromMapFunc(func(object client.Object) []reconcile.Request {
 			log := ctrl.Log.WithName("watch")
 
-			deploy := object.(*v1apps.Deployment)
-
 			copies := v1alpha1.CopyList{}
 			err := r.List(context.TODO(), &copies)
 			if err != nil {
@@ -74,13 +72,13 @@ func (r *CopyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				return nil
 			}
 			for _, copy := range copies.Items {
-				if deploy.Namespace == copy.Spec.SourceNamespace && hasLabel(deploy.GetLabels(), copy.Spec.TargetLabels) {
-					deploy.Namespace = copy.Namespace // Change to the destination namespace of the Copy custom resource
-					deploy.ResourceVersion = ""
-					err := r.Create(context.TODO(), deploy)
-					log.Info("Attempting to copy the deployment resource")
+				if object.GetNamespace() == copy.Spec.SourceNamespace && hasLabel(object.GetLabels(), copy.Spec.TargetLabels) {
+					object.SetNamespace(copy.Namespace)
+					object.SetResourceVersion("")
+					err := r.Create(context.TODO(), object)
+					log.Info("Attempting to copy the resource")
 					if err != nil {
-						log.Error(err, "Unable to copy deployment resource")
+						log.Error(err, "Unable to copy resource")
 					}
 				}
 			}
