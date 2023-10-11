@@ -18,9 +18,9 @@ package controllers
 
 import (
 	"context"
-	"reflect"
 
 	v1apps "k8s.io/api/apps/v1"
+	v1core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -63,7 +63,8 @@ func (r *CopyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, err
 	}
 
-	r.reconcileDeployment(ctx, log, copy)
+	r.reconcileAny(ctx, log, copy, &copyDeploy)
+	r.reconcileAny(ctx, log, copy, &copyPod)
 
 	return ctrl.Result{}, nil
 }
@@ -73,88 +74,99 @@ func (r *CopyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Copy{}).
 		Owns(&v1apps.Deployment{}).
+		Owns(&v1core.Pod{}).
 		Watches(&source.Kind{Type: &v1apps.Deployment{}}, handler.EnqueueRequestsFromMapFunc(func(object client.Object) []reconcile.Request {
-			log := ctrl.Log.WithName("watch")
-			ctx := context.TODO()
-
-			copies := v1alpha1.CopyList{}
-			err := r.List(ctx, &copies)
-			if err != nil {
-				log.Error(err, "No matching copy resources for namespace")
-				return nil
-			}
-
-			for _, copy := range copies.Items {
-				log.Info("Checking if resource should be copied",
-					"name", object.GetName(), "namespace", object.GetNamespace())
-				if object.GetNamespace() == copy.Spec.SourceNamespace &&
-					(!copy.Spec.UseLabels || hasLabel(object.GetLabels(), copy.Spec.TargetLabels)) {
-					r.reconcileDeployment(ctx, log, &copy) // TODO: Return the error?
-				}
-			}
-			return nil
+			return r.handleWatch(object, func(ctx context.Context, log logr.Logger, copy *v1alpha1.Copy) {
+				r.reconcileAny(ctx, log, copy, &copyDeploy)
+			})
+		})).
+		Watches(&source.Kind{Type: &v1core.Pod{}}, handler.EnqueueRequestsFromMapFunc(func(object client.Object) []reconcile.Request {
+			return r.handleWatch(object, func(ctx context.Context, log logr.Logger, copy *v1alpha1.Copy) {
+				r.reconcileAny(ctx, log, copy, &copyPod)
+			})
 		})).
 		Complete(r)
 }
 
-func (r *CopyReconciler) reconcileDeployment(ctx context.Context, log logr.Logger, copy *v1alpha1.Copy) {
-	srcDeploys := v1apps.DeploymentList{}
-	err := r.List(ctx, &srcDeploys, &client.ListOptions{Namespace: copy.Spec.SourceNamespace})
+func (r *CopyReconciler) handleWatch(object client.Object, reconcileFn func(context.Context, logr.Logger, *v1alpha1.Copy)) []reconcile.Request {
+	log := ctrl.Log.WithName("watch")
+	ctx := context.TODO()
+
+	copies := v1alpha1.CopyList{}
+	err := r.List(ctx, &copies)
 	if err != nil {
-		log.Error(err, "Unable to get source deployments")
+		log.Error(err, "No matching copy resources for namespace")
+		return nil
+	}
+
+	for _, copy := range copies.Items {
+		log.Info("Checking if resource should be copied",
+			"name", object.GetName(), "namespace", object.GetNamespace())
+		if object.GetNamespace() == copy.Spec.SourceNamespace &&
+			(!copy.Spec.UseLabels || hasLabel(object.GetLabels(), copy.Spec.TargetLabels)) {
+			reconcileFn(ctx, log, &copy)
+		}
+	}
+	return nil
+
+}
+
+func (r *CopyReconciler) reconcileAny(ctx context.Context, log logr.Logger, copy *v1alpha1.Copy, copyResource CopyResource) {
+	srcObjs, err := copyResource.GetList(ctx, r.Client, copy.Spec.SourceNamespace)
+	if err != nil {
+		log.Error(err, "Unable to get source resources")
 		return
 	}
 
-	destDeploys := v1apps.DeploymentList{}
-	err = r.List(ctx, &destDeploys, &client.ListOptions{Namespace: copy.GetNamespace()})
+	destObjs, err := copyResource.GetList(ctx, r.Client, copy.GetNamespace())
 	if err != nil {
-		log.Error(err, "Unable to get destination deployments")
+		log.Error(err, "Unable to get destination resources")
 		return
 	}
 
-	for _, srcDeploy := range srcDeploys.Items {
+	for _, srcObj := range srcObjs {
 		found := false
-		for _, destDeploy := range destDeploys.Items {
-			if destDeploy.GetName() == srcDeploy.GetName() {
+		for _, destObj := range destObjs {
+			if destObj.GetName() == srcObj.GetName() {
 				found = true
-				if !reflect.DeepEqual(destDeploy.Spec, srcDeploy.Spec) {
-					destDeploy.Spec = srcDeploy.Spec
-					err = r.Update(ctx, &destDeploy)
+				if !copyResource.CompareSpec(destObj, srcObj) {
+					copyResource.CopySpec(srcObj, destObj)
+					err = r.Update(ctx, destObj)
 					if err != nil {
-						log.Error(err, "Unable to update deployment", "name", destDeploy.GetName(), "namespace", destDeploy.GetNamespace())
+						log.Error(err, "Unable to update deployment", "name", destObj.GetName(), "namespace", destObj.GetNamespace())
 					}
 				}
 			}
 		}
 
 		if !found {
-			newDeploy := srcDeploy.DeepCopy()
-			newDeploy.SetNamespace(copy.GetNamespace())
-			newDeploy.SetResourceVersion("")
-			err = ctrl.SetControllerReference(copy, newDeploy, r.Scheme)
+			newObj := srcObj.DeepCopyObject().(client.Object)
+			newObj.SetNamespace(copy.GetNamespace())
+			newObj.SetResourceVersion("")
+			err = ctrl.SetControllerReference(copy, newObj, r.Scheme)
 			if err != nil {
-				log.Error(err, "Unable to set controller reference", "name", newDeploy.GetName(), "namespace", newDeploy.GetNamespace())
+				log.Error(err, "Unable to set controller reference", "name", newObj.GetName(), "namespace", newObj.GetNamespace())
 				continue
 			}
-			err = r.Create(ctx, newDeploy)
+			err = r.Create(ctx, newObj)
 			if err != nil {
-				log.Error(err, "Unable to create deployment", "name", newDeploy.GetName(), "namespace", newDeploy.GetNamespace())
+				log.Error(err, "Unable to create deployment", "name", newObj.GetName(), "namespace", newObj.GetNamespace())
 			}
 		}
 	}
 
-	for _, destDeploy := range destDeploys.Items {
+	for _, destObj := range destObjs {
 		found := false
-		for _, srcDeploy := range srcDeploys.Items {
-			if destDeploy.GetName() == srcDeploy.GetName() {
+		for _, srcObj := range srcObjs {
+			if destObj.GetName() == srcObj.GetName() {
 				found = true
 				break
 			}
 		}
 		if !found {
-			err := r.Delete(ctx, &destDeploy)
+			err := r.Delete(ctx, destObj)
 			if err != nil {
-				log.Error(err, "Unable to delete deployment", destDeploy.GetName(), "namespace", destDeploy.GetNamespace())
+				log.Error(err, "Unable to delete deployment", destObj.GetName(), "namespace", destObj.GetNamespace())
 			}
 		}
 	}

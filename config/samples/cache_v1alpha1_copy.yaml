@@ -30,6 +30,23 @@ spec:
           - "sleep"
           - "infinity"
 ---
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: test
+  name: ubuntu
+  labels:
+    app: ubuntu
+spec:
+  containers:
+  - image: ubuntu
+    command:
+      - "sleep"
+      - "604800"
+    imagePullPolicy: IfNotPresent
+    name: ubuntu
+  restartPolicy: Always
+---
 apiVersion: cache.mezmo.com/v1alpha1
 kind: Copy
 metadata:

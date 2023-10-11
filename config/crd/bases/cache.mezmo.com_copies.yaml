@@ -41,6 +41,10 @@ spec:
                 items:
                   type: string
                 type: array
+              useLabels:
+                type: boolean
+            required:
+            - useLabels
             type: object
           status:
             description: CopyStatus defines the observed state of Copy
