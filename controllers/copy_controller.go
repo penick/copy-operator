@@ -70,20 +70,29 @@ func (r *CopyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			copies := v1alpha1.CopyList{}
 			err := r.List(context.TODO(), &copies)
 			if err != nil {
-				log.Error("No matching copy resources for namespace")
+				log.Error(err, "No matching copy resources for namespace")
 				return nil
 			}
 			for _, copy := range copies.Items {
 				if deploy.Namespace == copy.Spec.SourceNamespace && hasLabel(deploy.GetLabels(), copy.Spec.TargetLabels) {
-					// Do copy
-					log.Info("We would have copied")
+					deploy.Namespace = copy.Namespace // Change to the destination namespace of the Copy custom resource
+					deploy.ResourceVersion = ""
+					err := r.Create(context.TODO(), deploy)
+					log.Info("Attempting to copy the deployment resource")
+					if err != nil {
+						log.Error(err, "Unable to copy deployment resource")
+					}
 				}
 			}
+			return nil
 		})).
 		Complete(r)
 }
 
 func hasLabel(labels map[string]string, targetLabels []string) bool {
+	if _, ok := labels["copyMe"]; ok {
+		return true
+	}
 	for _, target := range targetLabels {
 		if _, ok := labels[target]; ok {
 			return true

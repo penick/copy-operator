@@ -1,3 +1,35 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test
+  labels:
+    name: test
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: test
+  name: tester
+  labels:
+    app: tester
+    copyMe: "true"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: tester
+  template:
+    metadata:
+      labels:
+        app: tester
+    spec:
+      containers:
+      - name: tester
+        image: ubuntu
+        command:
+          - "sleep"
+          - "infinity"
+---
 apiVersion: cache.mezmo.com/v1alpha1
 kind: Copy
 metadata:
@@ -9,4 +41,4 @@ metadata:
     app.kubernetes.io/created-by: copy-operator
   name: copy-sample
 spec:
-  # TODO(user): Add fields here
+  sourceNamespace: test
