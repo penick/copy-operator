@@ -10,4 +10,14 @@ plugins:
   scorecard.sdk.operatorframework.io/v2: {}
 projectName: copy-operator
 repo: github.com/penick/copy-operator
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: mezmo.com
+  group: cache
+  kind: Copy
+  path: github.com/penick/copy-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"

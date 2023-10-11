@@ -1,0 +1,31 @@
+# permissions for end users to edit copies.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: copy-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: copy-operator
+    app.kubernetes.io/part-of: copy-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: copy-editor-role
+rules:
+- apiGroups:
+  - cache.mezmo.com
+  resources:
+  - copies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cache.mezmo.com
+  resources:
+  - copies/status
+  verbs:
+  - get

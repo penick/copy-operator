@@ -1,0 +1,12 @@
+apiVersion: cache.mezmo.com/v1alpha1
+kind: Copy
+metadata:
+  labels:
+    app.kubernetes.io/name: copy
+    app.kubernetes.io/instance: copy-sample
+    app.kubernetes.io/part-of: copy-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: copy-operator
+  name: copy-sample
+spec:
+  # TODO(user): Add fields here
